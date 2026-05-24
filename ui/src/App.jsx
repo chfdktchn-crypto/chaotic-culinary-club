@@ -94,8 +94,8 @@ export default function App() {
       });
       setRecipe(res.data);
       setServings(baseServings);
-    } catch (e) {
-      setError((e.response && e.response.data && e.response.data.detail) || e.message || "Something went wrong.");
+   } catch (e) {
+      setError(JSON.stringify({msg: e.message, code: e.code, url: API_URL, resp: e.response?.status}));
     } finally { setLoading(false); }
   };
 
