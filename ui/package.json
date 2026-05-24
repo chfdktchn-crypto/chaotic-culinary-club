@@ -1,0 +1,22 @@
+{
+  "name": "chef-ui",
+  "dependencies": {
+    "react": "^18",
+    "react-dom": "^18",
+    "axios": "^1.6",
+    "react-scripts": "5.0.1",
+    "ajv": "^8"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "devDependencies": {
+    "@types/react": "^18",
+    "typescript": "^5"
+  },
+  "browserslist": {
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version"]
+  }
+}
