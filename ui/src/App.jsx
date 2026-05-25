@@ -167,7 +167,7 @@ export default function App() {
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #0f0e0c; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
       `}</style>
       <div className="card">
-        <img src="/logo.png" alt="The Chaotic Culinary Club" className="logo" />
+        <h1>The Chaotic Culinary Club</h1>
         <p className="subtitle">Let's get Culinating!!</p>
 
         <div className="tabs">
