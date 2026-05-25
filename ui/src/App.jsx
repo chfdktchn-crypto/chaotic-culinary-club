@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
-const API_URL = "https://captivating-harmony-production-c590.up.railway.app";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const CUISINES = ["Any", "Italian", "Mexican", "Japanese", "Indian", "French", "Thai", "Mediterranean"];
 const STORAGE_KEY = "chefai_favourites";
 
@@ -94,8 +94,8 @@ export default function App() {
       });
       setRecipe(res.data);
       setServings(baseServings);
-   } catch (e) {
-      setError(JSON.stringify({msg: e.message, code: e.code, url: API_URL, resp: e.response?.status}));
+    } catch (e) {
+      setError((e.response && e.response.data && e.response.data.detail) || e.message || "Something went wrong.");
     } finally { setLoading(false); }
   };
 
@@ -122,6 +122,7 @@ export default function App() {
         .card { max-width: 680px; margin: 3rem auto; background: #1a1814; border: 1px solid #3a3530; border-radius: 4px; padding: 2.5rem; }
         h1 { font-size: 2.4rem; margin: 0; }
         .subtitle { color: #9a9080; font-style: italic; margin-top: 0.4rem; }
+        .logo { width: 180px; height: 180px; object-fit: cover; border-radius: 50%; margin-bottom: 1rem; display: block; }
         .tabs { display: flex; margin: 1.5rem 0 0; border-bottom: 1px solid #3a3530; }
         .tab { padding: 0.6rem 1.2rem; font-family: monospace; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: none; background: none; color: #9a9080; border-bottom: 2px solid transparent; margin-bottom: -1px; }
         .tab.active { color: #c8a96e; border-bottom-color: #c8a96e; }
@@ -166,8 +167,8 @@ export default function App() {
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #0f0e0c; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
       `}</style>
       <div className="card">
-        <h1>The Chaotic Culinary Club</h1>
-<p className="subtitle">Let's get Culinating!!</p>
+        <img src="/logo.png" alt="The Chaotic Culinary Club" className="logo" />
+        <p className="subtitle">Let's get Culinating!!</p>
 
         <div className="tabs">
           <button className={`tab ${view === "generate" ? "active" : ""}`} onClick={() => setView("generate")}>Generate</button>
