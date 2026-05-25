@@ -122,7 +122,7 @@ export default function App() {
         .card { max-width: 680px; margin: 3rem auto; background: #1a1814; border: 1px solid #3a3530; border-radius: 4px; padding: 2.5rem; }
         h1 { font-size: 2.4rem; margin: 0; }
         .subtitle { color: #9a9080; font-style: italic; margin-top: 0.4rem; }
-        .logo { width: 180px; height: 180px; object-fit: cover; border-radius: 50%; margin-bottom: 1rem; display: block; }
+        .logo { width: 140px; height: 140px; object-fit: cover; border-radius: 50%; margin: 0 auto 1rem auto; display: block; }
         .tabs { display: flex; margin: 1.5rem 0 0; border-bottom: 1px solid #3a3530; }
         .tab { padding: 0.6rem 1.2rem; font-family: monospace; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: none; background: none; color: #9a9080; border-bottom: 2px solid transparent; margin-bottom: -1px; }
         .tab.active { color: #c8a96e; border-bottom-color: #c8a96e; }
