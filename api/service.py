@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import anthropic
 import os
@@ -12,8 +13,10 @@ app = FastAPI(title="Chef-AI API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    max_age=3600,
 )
 
 
@@ -37,7 +40,6 @@ def parse_recipe(text):
     if ing_match:
         raw = ing_match.group(1).strip()
         lines = [re.sub(r"^[-•*]\s*", "", line).strip() for line in raw.split("\n") if line.strip()]
-        # Remove stray trailing numbers from ingredients
         ingredients = [re.sub(r"\s+\d+$", "", line) for line in lines]
 
     steps_match = re.search(r"(?:method|directions|steps):\s*\n(.*?)$", text, re.IGNORECASE | re.DOTALL)
@@ -45,7 +47,6 @@ def parse_recipe(text):
         raw = steps_match.group(1).strip()
         step_list = re.split(r"\n\d+\.\s+|\n", raw)
         steps = [re.sub(r"^\d+\.\s*", "", s).strip() for s in step_list if len(s.strip()) > 10]
-        # Remove any step that is just "directions" or similar header artifacts
         steps = [s for s in steps if not re.match(r"^directions\s*\d*\.?$", s, re.IGNORECASE)]
 
     if not title:
