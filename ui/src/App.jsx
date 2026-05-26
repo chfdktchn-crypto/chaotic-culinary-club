@@ -5,6 +5,7 @@ const API_URL = "https://captivating-harmony-production-c590.up.railway.app";
 const CUISINES = ["Any", "Italian", "Mexican", "Japanese", "Indian", "French", "Thai", "Mediterranean"];
 const STORAGE_KEY = "chefai_favourites";
 const PRICES_KEY = "chefai_prices";
+const MY_RECIPES_KEY = "chefai_myrecipes";
 
 function loadFavourites() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
@@ -17,6 +18,12 @@ function loadPrices() {
   catch { return {}; }
 }
 function savePrices(prices) { localStorage.setItem(PRICES_KEY, JSON.stringify(prices)); }
+
+function loadMyRecipes() {
+  try { return JSON.parse(localStorage.getItem(MY_RECIPES_KEY) || "[]"); }
+  catch { return []; }
+}
+function saveMyRecipes(recipes) { localStorage.setItem(MY_RECIPES_KEY, JSON.stringify(recipes)); }
 
 function scaleQty(ingredient, factor) {
   const match = ingredient.match(/^(\d+\.?\d*|\d+\/\d+)\s*/);
@@ -33,7 +40,6 @@ function scaleQty(ingredient, factor) {
   return formatted + " " + ingredient.slice(match[0].length);
 }
 
-// Extract numeric quantity from an ingredient string
 function parseQty(ingredient) {
   const match = ingredient.match(/^(\d+\.?\d*|\d+\/\d+)\s*/);
   if (!match) return 1;
@@ -56,7 +62,6 @@ function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) 
           </button>
         )}
       </div>
-
       <div className="servings-row">
         <span className="section-label" style={{margin:0}}>Servings</span>
         <div className="servings-control">
@@ -65,7 +70,6 @@ function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) 
           <button className="srv-btn" onClick={() => onServingsChange(servings + 1)}>+</button>
         </div>
       </div>
-
       {recipe.ingredients && recipe.ingredients.length > 0 && (
         <>
           <div className="section-label">Ingredients</div>
@@ -90,31 +94,268 @@ function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) 
   );
 }
 
-function CostingTab({ favourites, genRecipe, findRecipe }) {
+// ── Recipe Form (manual entry + edit) ──────────────────────────────────────
+const EMPTY_FORM = { title: "", base_servings: 2, ingredients: [""], steps: [""] };
+
+function RecipeForm({ initial, onSave, onCancel }) {
+  const [form, setForm] = useState(initial || EMPTY_FORM);
+
+  const setField = (field, val) => setForm(f => ({ ...f, [field]: val }));
+
+  const setListItem = (field, idx, val) => {
+    const arr = [...form[field]];
+    arr[idx] = val;
+    setForm(f => ({ ...f, [field]: arr }));
+  };
+  const addListItem = (field) => setForm(f => ({ ...f, [field]: [...f[field], ""] }));
+  const removeListItem = (field, idx) => {
+    if (form[field].length <= 1) return;
+    setForm(f => ({ ...f, [field]: f[field].filter((_, i) => i !== idx) }));
+  };
+
+  const handleSave = () => {
+    if (!form.title.trim()) return;
+    const clean = {
+      ...form,
+      ingredients: form.ingredients.filter(i => i.trim()),
+      steps: form.steps.filter(s => s.trim()),
+    };
+    onSave(clean);
+  };
+
+  return (
+    <div className="recipe-form">
+      <label>Recipe Title</label>
+      <input type="text" value={form.title} onChange={e => setField("title", e.target.value)} placeholder="e.g. Mum's Beef Stew" />
+
+      <div style={{marginTop:"1.2rem"}}>
+        <label>Base Servings</label>
+        <div className="servings-control">
+          <button className="srv-btn" onClick={() => setField("base_servings", Math.max(1, form.base_servings - 1))}>−</button>
+          <span className="srv-val">{form.base_servings}</span>
+          <button className="srv-btn" onClick={() => setField("base_servings", form.base_servings + 1)}>+</button>
+        </div>
+      </div>
+
+      <label style={{marginTop:"1.2rem"}}>Ingredients</label>
+      {form.ingredients.map((ing, i) => (
+        <div key={i} style={{display:"flex", gap:"0.5rem", marginBottom:"0.4rem", alignItems:"center"}}>
+          <input type="text" value={ing} onChange={e => setListItem("ingredients", i, e.target.value)}
+            placeholder={`e.g. 2 cups flour`} style={{flex:1}} />
+          <button className="btn-list-remove" onClick={() => removeListItem("ingredients", i)}>−</button>
+        </div>
+      ))}
+      <button className="btn-list-add" onClick={() => addListItem("ingredients")}>+ Add Ingredient</button>
+
+      <label style={{marginTop:"1.2rem"}}>Method Steps</label>
+      {form.steps.map((step, i) => (
+        <div key={i} style={{display:"flex", gap:"0.5rem", marginBottom:"0.4rem", alignItems:"flex-start"}}>
+          <span className="step-num" style={{paddingTop:"0.8rem"}}>{i + 1}.</span>
+          <textarea className="step-textarea" value={step}
+            onChange={e => setListItem("steps", i, e.target.value)}
+            placeholder={`Step ${i + 1}…`} rows={2} style={{flex:1}} />
+          <button className="btn-list-remove" style={{marginTop:"0.4rem"}} onClick={() => removeListItem("steps", i)}>−</button>
+        </div>
+      ))}
+      <button className="btn-list-add" onClick={() => addListItem("steps")}>+ Add Step</button>
+
+      <div style={{display:"flex", gap:"0.75rem", marginTop:"1.5rem"}}>
+        <button className="btn-primary" style={{margin:0}} onClick={handleSave} disabled={!form.title.trim()}>
+          Save Recipe
+        </button>
+        <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Paste & Parse ───────────────────────────────────────────────────────────
+function PasteParser({ onParsed, onCancel }) {
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleParse = async () => {
+    if (!text.trim()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: `You are a recipe parser. The user will paste in a recipe in any format. 
+Extract it and return ONLY a JSON object with this exact structure, no markdown, no preamble:
+{
+  "title": "Recipe Name",
+  "base_servings": 4,
+  "ingredients": ["2 cups flour", "1 tsp salt"],
+  "steps": ["Mix dry ingredients.", "Add wet ingredients and stir."]
+}
+Make sure base_servings is a number. If servings are not mentioned, default to 4.`,
+          messages: [{ role: "user", content: text }],
+        }),
+      });
+      const data = await response.json();
+      const raw = data.content[0].text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(raw);
+      onParsed(parsed);
+    } catch (e) {
+      setError("Couldn't parse that recipe. Try the manual form instead, or check the text and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <label>Paste Your Recipe</label>
+      <div className="cost-hint">Paste in any format — from a website, a handwritten note, however you have it.</div>
+      <textarea
+        className="paste-area"
+        value={text}
+        onChange={e => setText(e.target.value)}
+        placeholder={"Grandma's Lasagne\n\nServes 6\n\nIngredients:\n- 500g beef mince\n- 1 onion\n...\n\nMethod:\n1. Brown the mince..."}
+        rows={10}
+      />
+      {error && <div className="error" style={{marginTop:"0.75rem"}}>{error}</div>}
+      <div style={{display:"flex", gap:"0.75rem", marginTop:"1rem"}}>
+        <button className="btn-primary" style={{margin:0}} onClick={handleParse} disabled={loading || !text.trim()}>
+          {loading ? <><span className="spinner" />Parsing…</> : "Parse Recipe"}
+        </button>
+        <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ── My Recipes Tab ──────────────────────────────────────────────────────────
+function MyRecipesTab({ myRecipes, setMyRecipes }) {
+  const [mode, setMode] = useState("list"); // list | manual | paste | edit
+  const [editIndex, setEditIndex] = useState(null);
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const [viewServings, setViewServings] = useState({});
+
+  const handleSaveNew = (recipe) => {
+    const updated = [{ ...recipe, savedAt: new Date().toISOString() }, ...myRecipes];
+    setMyRecipes(updated);
+    saveMyRecipes(updated);
+    setMode("list");
+  };
+
+  const handleSaveEdit = (recipe) => {
+    const updated = myRecipes.map((r, i) => i === editIndex ? { ...recipe, savedAt: r.savedAt } : r);
+    setMyRecipes(updated);
+    saveMyRecipes(updated);
+    setEditIndex(null);
+    setMode("list");
+  };
+
+  const handleDelete = (idx) => {
+    const updated = myRecipes.filter((_, i) => i !== idx);
+    setMyRecipes(updated);
+    saveMyRecipes(updated);
+    if (selectedIdx === idx) setSelectedIdx(null);
+  };
+
+  const handleParsed = (recipe) => {
+    // Go to edit form so user can review/correct before saving
+    setEditIndex(null);
+    setMode("review");
+    setPendingParsed(recipe);
+  };
+
+  const [pendingParsed, setPendingParsed] = useState(null);
+
+  if (mode === "manual") {
+    return <RecipeForm onSave={handleSaveNew} onCancel={() => setMode("list")} />;
+  }
+
+  if (mode === "paste") {
+    return <PasteParser onParsed={(r) => { setPendingParsed(r); setMode("review"); }} onCancel={() => setMode("list")} />;
+  }
+
+  if (mode === "review" && pendingParsed) {
+    return (
+      <div>
+        <div className="cost-hint" style={{marginTop:"1rem"}}>Recipe parsed — review and correct anything before saving.</div>
+        <RecipeForm initial={pendingParsed} onSave={handleSaveNew} onCancel={() => { setPendingParsed(null); setMode("list"); }} />
+      </div>
+    );
+  }
+
+  if (mode === "edit" && editIndex !== null) {
+    return <RecipeForm initial={myRecipes[editIndex]} onSave={handleSaveEdit} onCancel={() => setMode("list")} />;
+  }
+
+  return (
+    <div>
+      <div style={{display:"flex", gap:"0.75rem", marginTop:"1.2rem"}}>
+        <button className="btn-primary" style={{margin:0, flex:1}} onClick={() => setMode("manual")}>+ Manual Entry</button>
+        <button className="btn-primary" style={{margin:0, flex:1}} onClick={() => setMode("paste")}>+ Paste &amp; Parse</button>
+      </div>
+
+      {myRecipes.length === 0 && (
+        <div className="empty">No recipes yet. Add one manually or paste one in!</div>
+      )}
+
+      <div className="fav-list">
+        {myRecipes.map((recipe, i) => (
+          <div key={i}>
+            <div
+              className={`fav-item ${selectedIdx === i ? "active" : ""}`}
+              onClick={() => { setSelectedIdx(selectedIdx === i ? null : i); setViewServings(s => ({...s, [i]: recipe.base_servings || 2})); }}
+            >
+              <div>
+                <div className="fav-name">{recipe.title}</div>
+                <div className="fav-date">Added {new Date(recipe.savedAt).toLocaleDateString()}</div>
+              </div>
+              <div style={{display:"flex", gap:"0.5rem"}} onClick={e => e.stopPropagation()}>
+                <button className="btn-save" onClick={() => { setEditIndex(i); setMode("edit"); }}>Edit</button>
+                <button className="btn-delete" onClick={() => handleDelete(i)}>✕</button>
+              </div>
+            </div>
+            {selectedIdx === i && (
+              <RecipeDisplay
+                recipe={recipe}
+                servings={viewServings[i] || recipe.base_servings || 2}
+                onServingsChange={n => setViewServings(s => ({...s, [i]: n}))}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Costing Tab ─────────────────────────────────────────────────────────────
+function CostingTab({ favourites, genRecipe, findRecipe, myRecipes }) {
   const [prices, setPrices] = useState(loadPrices);
   const [selectedKey, setSelectedKey] = useState(null);
   const [costServings, setCostServings] = useState(2);
 
-  // Build list of available recipes
   const options = [];
   if (genRecipe) options.push({ key: "__gen__", label: `[Generated] ${genRecipe.title}`, recipe: genRecipe });
   if (findRecipe) options.push({ key: "__find__", label: `[Found] ${findRecipe.title}`, recipe: findRecipe });
+  myRecipes.forEach((r, i) => options.push({ key: `mine_${i}`, label: `[Mine] ${r.title}`, recipe: r }));
   favourites.forEach((fav, i) => options.push({ key: `fav_${i}`, label: fav.title, recipe: fav }));
 
-  // Auto-select first option when options change
   useEffect(() => {
     if (options.length > 0 && (selectedKey === null || !options.find(o => o.key === selectedKey))) {
       setSelectedKey(options[0].key);
       setCostServings(options[0].recipe.base_servings || 2);
     }
-  }, [genRecipe, findRecipe, favourites.length]);
+  }, [genRecipe, findRecipe, favourites.length, myRecipes.length]);
 
   const selected = options.find(o => o.key === selectedKey);
   const recipe = selected ? selected.recipe : null;
   const factor = recipe ? costServings / (recipe.base_servings || 2) : 1;
 
-  const handlePriceChange = (ingredientName, value) => {
-    const updated = { ...prices, [ingredientName]: value };
+  const handlePriceChange = (key, value) => {
+    const updated = { ...prices, [key]: value };
     setPrices(updated);
     savePrices(updated);
   };
@@ -125,11 +366,8 @@ function CostingTab({ favourites, genRecipe, findRecipe }) {
     if (opt) setCostServings(opt.recipe.base_servings || 2);
   };
 
-  // Compute costs
   let totalCost = 0;
   const rows = recipe ? recipe.ingredients.map(ing => {
-    const scaledQty = factor !== 1 ? parseQty(scaleQty(ing, factor)) : parseQty(ing);
-    const baseQty = parseQty(ing);
     const priceKey = ing.toLowerCase().trim();
     const priceVal = parseFloat(prices[priceKey] || "");
     const lineCost = isNaN(priceVal) ? null : priceVal;
@@ -141,7 +379,7 @@ function CostingTab({ favourites, genRecipe, findRecipe }) {
   const costPerServing = hasAnyCost ? totalCost / costServings : null;
 
   if (options.length === 0) {
-    return <div className="empty">No recipes available to cost yet. Generate or find a recipe first, or save some favourites.</div>;
+    return <div className="empty">No recipes available to cost yet. Generate or find a recipe, or add your own in My Recipes.</div>;
   }
 
   return (
@@ -163,7 +401,7 @@ function CostingTab({ favourites, genRecipe, findRecipe }) {
           </div>
 
           <div className="section-label" style={{marginTop:"1.2rem"}}>Ingredient Costs</div>
-          <div className="cost-hint">Enter the total price you pay for each ingredient (e.g. $3.50 for a whole can of tomatoes). Leave blank to exclude from total.</div>
+          <div className="cost-hint">Enter the total price you pay for each ingredient. Leave blank to exclude from total.</div>
 
           <div className="cost-table">
             <div className="cost-header">
@@ -177,9 +415,7 @@ function CostingTab({ favourites, genRecipe, findRecipe }) {
                 <span className="cost-ing">{row.ing}</span>
                 <span className="cost-qty">{row.scaledIng}</span>
                 <input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  type="number" min="0" step="0.01"
                   className="cost-input"
                   placeholder="0.00"
                   value={prices[row.priceKey] || ""}
@@ -204,7 +440,6 @@ function CostingTab({ favourites, genRecipe, findRecipe }) {
               </div>
             </div>
           )}
-
           {!hasAnyCost && (
             <div className="empty" style={{paddingTop:"1rem"}}>Enter prices above to see cost breakdown.</div>
           )}
@@ -214,13 +449,14 @@ function CostingTab({ favourites, genRecipe, findRecipe }) {
   );
 }
 
+// ── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [view, setView] = useState("generate");
   const [favourites, setFavourites] = useState(loadFavourites);
   const [selectedFav, setSelectedFav] = useState(null);
   const [favServings, setFavServings] = useState({});
+  const [myRecipes, setMyRecipes] = useState(loadMyRecipes);
 
-  // Generate tab
   const [ingredients, setIngredients] = useState("");
   const [cuisine, setCuisine] = useState("Any");
   const [maxTime, setMaxTime] = useState(30);
@@ -230,7 +466,6 @@ export default function App() {
   const [genLoading, setGenLoading] = useState(false);
   const [genError, setGenError] = useState("");
 
-  // Find tab
   const [dish, setDish] = useState("");
   const [findCuisine, setFindCuisine] = useState("Any");
   const [findServings, setFindServings] = useState(2);
@@ -298,12 +533,14 @@ export default function App() {
         .card { max-width: 680px; margin: 3rem auto; background: #1a1814; border: 1px solid #3a3530; border-radius: 4px; padding: 2.5rem; }
         h1 { font-size: 2.4rem; margin: 0; }
         .subtitle { color: #9a9080; font-style: italic; margin-top: 0.4rem; }
-        .tabs { display: flex; margin: 1.5rem 0 0; border-bottom: 1px solid #3a3530; }
+        .tabs { display: flex; flex-wrap: wrap; margin: 1.5rem 0 0; border-bottom: 1px solid #3a3530; }
         .tab { padding: 0.6rem 1.2rem; font-family: monospace; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: none; background: none; color: #9a9080; border-bottom: 2px solid transparent; margin-bottom: -1px; }
         .tab.active { color: #c8a96e; border-bottom-color: #c8a96e; }
         label { display: block; font-size: 0.75rem; font-family: monospace; letter-spacing: 0.12em; text-transform: uppercase; color: #9a9080; margin-bottom: 0.5rem; margin-top: 1.2rem; }
-        input[type=text], input[type=number], select { width: 100%; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; color: #f5f0e8; font-size: 1rem; font-family: Georgia, serif; padding: 0.75rem 1rem; outline: none; }
-        input[type=text]:focus, input[type=number]:focus, select:focus { border-color: #c8a96e; }
+        input[type=text], input[type=number], select, textarea { width: 100%; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; color: #f5f0e8; font-size: 1rem; font-family: Georgia, serif; padding: 0.75rem 1rem; outline: none; resize: vertical; }
+        input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus { border-color: #c8a96e; }
+        .step-textarea { padding: 0.5rem 0.75rem; font-size: 0.95rem; }
+        .paste-area { min-height: 200px; font-size: 0.9rem; line-height: 1.6; }
         .row { display: flex; gap: 1rem; }
         .row > div { flex: 1; }
         input[type=range] { width: 100%; accent-color: #c8a96e; }
@@ -311,6 +548,13 @@ export default function App() {
         .btn-primary { width: 100%; margin-top: 1.5rem; padding: 0.9rem; background: #c8a96e; color: #0f0e0c; border: none; border-radius: 2px; font-size: 1rem; font-family: Georgia, serif; font-weight: 700; cursor: pointer; }
         .btn-primary:disabled { background: #3a3530; color: #9a9080; cursor: not-allowed; }
         .btn-primary:hover:not(:disabled) { background: #daba80; }
+        .btn-secondary { width: 100%; margin-top: 1.5rem; padding: 0.9rem; background: none; color: #9a9080; border: 1px solid #3a3530; border-radius: 2px; font-size: 1rem; font-family: Georgia, serif; cursor: pointer; }
+        .btn-secondary:hover { border-color: #c8a96e; color: #c8a96e; }
+        .btn-list-add { background: none; border: 1px dashed #3a3530; border-radius: 2px; color: #9a9080; font-family: monospace; font-size: 0.75rem; letter-spacing: 0.08em; padding: 0.4rem 0.8rem; cursor: pointer; margin-top: 0.3rem; }
+        .btn-list-add:hover { border-color: #c8a96e; color: #c8a96e; }
+        .btn-list-remove { background: none; border: 1px solid #3a3530; border-radius: 2px; color: #6b3030; font-size: 1rem; cursor: pointer; padding: 0 0.5rem; height: 36px; flex-shrink: 0; }
+        .btn-list-remove:hover { color: #e07060; border-color: #6b3030; }
+        .recipe-form { margin-top: 1rem; }
         .error { margin-top: 1.5rem; padding: 0.75rem 1rem; background: #2a1a18; border: 1px solid #6b3030; border-radius: 2px; color: #e07060; font-family: monospace; }
         .recipe-box { margin-top: 1.5rem; padding: 1.5rem; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; }
         .recipe-title { font-size: 1.4rem; font-weight: 700; color: #c8a96e; margin-bottom: 0.5rem; }
@@ -369,6 +613,9 @@ export default function App() {
           <button className={`tab ${view === "favourites" ? "active" : ""}`} onClick={() => setView("favourites")}>
             Favourites {favourites.length > 0 ? `(${favourites.length})` : ""}
           </button>
+          <button className={`tab ${view === "myrecipes" ? "active" : ""}`} onClick={() => setView("myrecipes")}>
+            My Recipes {myRecipes.length > 0 ? `(${myRecipes.length})` : ""}
+          </button>
           <button className={`tab ${view === "costing" ? "active" : ""}`} onClick={() => setView("costing")}>Costing</button>
         </div>
 
@@ -379,7 +626,6 @@ export default function App() {
             <input type="text" placeholder="eggs, tomato, basil, garlic…" value={ingredients}
               onChange={e => setIngredients(e.target.value)}
               onKeyDown={e => e.key === "Enter" && !genLoading && handleGenerate()} />
-
             <div className="row">
               <div>
                 <label>Cuisine</label>
@@ -395,7 +641,6 @@ export default function App() {
                 </div>
               </div>
             </div>
-
             <div style={{marginTop:"1.2rem"}}>
               <label>Servings</label>
               <div className="servings-control">
@@ -404,20 +649,13 @@ export default function App() {
                 <button className="srv-btn" onClick={() => setBaseServings(baseServings + 1)}>+</button>
               </div>
             </div>
-
             <button className="btn-primary" onClick={handleGenerate} disabled={genLoading || !ingredients.trim()}>
               {genLoading ? <><span className="spinner" />Cooking…</> : "Generate Recipe"}
             </button>
-
             {genError && <div className="error">{genError}</div>}
             {genRecipe && (
-              <RecipeDisplay
-                recipe={genRecipe}
-                servings={genServings}
-                onServingsChange={setGenServings}
-                onSave={() => handleSave(genRecipe)}
-                isSaved={isGenSaved}
-              />
+              <RecipeDisplay recipe={genRecipe} servings={genServings} onServingsChange={setGenServings}
+                onSave={() => handleSave(genRecipe)} isSaved={isGenSaved} />
             )}
           </>
         )}
@@ -429,7 +667,6 @@ export default function App() {
             <input type="text" placeholder="Chicken Alfredo, Beef Stew, Tiramisu…" value={dish}
               onChange={e => setDish(e.target.value)}
               onKeyDown={e => e.key === "Enter" && !findLoading && handleFind()} />
-
             <div className="row">
               <div>
                 <label>Cuisine Style</label>
@@ -446,20 +683,13 @@ export default function App() {
                 </div>
               </div>
             </div>
-
             <button className="btn-primary" onClick={handleFind} disabled={findLoading || !dish.trim()}>
               {findLoading ? <><span className="spinner" />Searching…</> : "Find Recipe"}
             </button>
-
             {findError && <div className="error">{findError}</div>}
             {findRecipe && (
-              <RecipeDisplay
-                recipe={findRecipe}
-                servings={findRecipeServings}
-                onServingsChange={setFindRecipeServings}
-                onSave={() => handleSave(findRecipe)}
-                isSaved={isFindSaved}
-              />
+              <RecipeDisplay recipe={findRecipe} servings={findRecipeServings} onServingsChange={setFindRecipeServings}
+                onSave={() => handleSave(findRecipe)} isSaved={isFindSaved} />
             )}
           </>
         )}
@@ -490,13 +720,14 @@ export default function App() {
           </>
         )}
 
+        {/* MY RECIPES TAB */}
+        {view === "myrecipes" && (
+          <MyRecipesTab myRecipes={myRecipes} setMyRecipes={setMyRecipes} />
+        )}
+
         {/* COSTING TAB */}
         {view === "costing" && (
-          <CostingTab
-            favourites={favourites}
-            genRecipe={genRecipe}
-            findRecipe={findRecipe}
-          />
+          <CostingTab favourites={favourites} genRecipe={genRecipe} findRecipe={findRecipe} myRecipes={myRecipes} />
         )}
       </div>
     </div>
