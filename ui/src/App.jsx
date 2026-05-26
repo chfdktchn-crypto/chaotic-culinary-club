@@ -331,6 +331,35 @@ function MyRecipesTab({ myRecipes, setMyRecipes }) {
   );
 }
 
+function PricingResults({ category, costPerServing, targetPct }) {
+  const menuPrice = costPerServing / (targetPct / 100);
+  const grossProfit = menuPrice - costPerServing;
+  return (
+    <div className="pricing-results">
+      <div className="pricing-row">
+        <span>{category} Cost per Serving</span>
+        <span className="pricing-val">${costPerServing.toFixed(2)}</span>
+      </div>
+      <div className="pricing-row">
+        <span>Target {category} Cost %</span>
+        <span className="pricing-val">{targetPct}%</span>
+      </div>
+      <div className="pricing-row highlight">
+        <span>Suggested Menu Price</span>
+        <span className="pricing-val">${menuPrice.toFixed(2)}</span>
+      </div>
+      <div className="pricing-row">
+        <span>Gross Profit per Serving</span>
+        <span className="pricing-val">${grossProfit.toFixed(2)}</span>
+      </div>
+      <div className="pricing-row">
+        <span>Gross Profit %</span>
+        <span className="pricing-val">{(100 - targetPct).toFixed(1)}%</span>
+      </div>
+    </div>
+  );
+}
+
 const COST_CATEGORIES = [
   { label: "Food",          presets: [28, 30, 32, 35] },
   { label: "Liquor",        presets: [18, 20, 22, 25] },
@@ -500,35 +529,13 @@ function CostingTab({ favourites, genRecipe, findRecipe, myRecipes }) {
               </div>
 
               {/* Results */}
-              {targetCostPct > 0 && targetCostPct < 100 && (() => {
-                const menuPrice = costPerServing / (targetCostPct / 100);
-                const grossProfit = menuPrice - costPerServing;
-                const actualPct = targetCostPct;
-                return (
-                  <div className="pricing-results">
-                    <div className="pricing-row">
-                      <span>{costCategory.label} Cost per Serving</span>
-                      <span className="pricing-val">${costPerServing.toFixed(2)}</span>
-                    </div>
-                    <div className="pricing-row">
-                      <span>Target {costCategory.label} Cost %</span>
-                      <span className="pricing-val">{actualPct}%</span>
-                    </div>
-                    <div className="pricing-row highlight">
-                      <span>Suggested Menu Price</span>
-                      <span className="pricing-val">${menuPrice.toFixed(2)}</span>
-                    </div>
-                    <div className="pricing-row">
-                      <span>Gross Profit per Serving</span>
-                      <span className="pricing-val">${grossProfit.toFixed(2)}</span>
-                    </div>
-                    <div className="pricing-row">
-                      <span>Gross Profit %</span>
-                      <span className="pricing-val">{(100 - actualPct).toFixed(1)}%</span>
-                    </div>
-                  </div>
-                );
-              })()}
+              {targetCostPct > 0 && targetCostPct < 100 && costPerServing !== null && (
+                <PricingResults
+                  category={costCategory.label}
+                  costPerServing={costPerServing}
+                  targetPct={targetCostPct}
+                />
+              )}
             </div>
           )}
         </>
@@ -618,7 +625,7 @@ export default function App() {
         @keyframes spin { to { transform: rotate(360deg); } }
         * { box-sizing: border-box; }
         body { background: #0f0e0c; color: #f5f0e8; font-family: Georgia, serif; margin: 0; }
-        .card { max-width: 680px; margin: 3rem auto; background: #1a1814; border: 1px solid #3a3530; border-radius: 4px; padding: 2.5rem; }
+        .card { max-width: 680px; margin: 3rem auto 6rem; background: #1a1814; border: 1px solid #3a3530; border-radius: 4px; padding: 2.5rem; }
         h1 { font-size: 2.4rem; margin: 0; }
         .subtitle { color: #9a9080; font-style: italic; margin-top: 0.4rem; }
         .tabs { display: flex; flex-wrap: wrap; margin: 1.5rem 0 0; border-bottom: 1px solid #3a3530; }
