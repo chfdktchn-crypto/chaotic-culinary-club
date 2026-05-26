@@ -199,7 +199,11 @@ export default function App() {
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #0f0e0c; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
       `}</style>
       <div className="card">
-        <h1>The Chaotic Culinary Club</h1>
+        <div style={{display:"flex", alignItems:"center", gap:"1rem"}}>
+  <img src="/logo.png" alt="Chaotic Culinary Club" style={{height:"56px", width:"auto"}} />
+  <h1>The Chaotic Culinary Club</h1>
+</div>
+
         <p className="subtitle">Let's get Culinating!!</p>
 
         <div className="tabs">
