@@ -26,11 +26,18 @@ function scaleQty(ingredient, factor) {
   return formatted + " " + ingredient.slice(match[0].length);
 }
 
-function RecipeDisplay({ recipe, servings, onServingsChange }) {
+function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) {
   const factor = servings / (recipe.base_servings || 2);
   return (
     <div className="recipe-box">
-      <div className="recipe-title">{recipe.title}</div>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
+        <div className="recipe-title">{recipe.title}</div>
+        {onSave && (
+          <button className={`btn-save ${isSaved ? "saved" : ""}`} onClick={onSave}>
+            {isSaved ? "✓ Saved" : "Save"}
+          </button>
+        )}
+      </div>
 
       <div className="servings-row">
         <span className="section-label" style={{margin:0}}>Servings</span>
@@ -66,40 +73,33 @@ function RecipeDisplay({ recipe, servings, onServingsChange }) {
 }
 
 export default function App() {
+  const [view, setView] = useState("generate");
+  const [favourites, setFavourites] = useState(loadFavourites);
+  const [selectedFav, setSelectedFav] = useState(null);
+  const [favServings, setFavServings] = useState({});
+
+  // Generate tab
   const [ingredients, setIngredients] = useState("");
   const [cuisine, setCuisine] = useState("Any");
   const [maxTime, setMaxTime] = useState(30);
   const [baseServings, setBaseServings] = useState(2);
-  const [recipe, setRecipe] = useState(null);
-  const [servings, setServings] = useState(2);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [favourites, setFavourites] = useState(loadFavourites);
-  const [view, setView] = useState("generate");
-  const [selectedFav, setSelectedFav] = useState(null);
-  const [favServings, setFavServings] = useState({});
+  const [genRecipe, setGenRecipe] = useState(null);
+  const [genServings, setGenServings] = useState(2);
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError, setGenError] = useState("");
+
+  // Find tab
+  const [dish, setDish] = useState("");
+  const [findCuisine, setFindCuisine] = useState("Any");
+  const [findServings, setFindServings] = useState(2);
+  const [findRecipe, setFindRecipe] = useState(null);
+  const [findRecipeServings, setFindRecipeServings] = useState(2);
+  const [findLoading, setFindLoading] = useState(false);
+  const [findError, setFindError] = useState("");
 
   useEffect(() => { saveFavourites(favourites); }, [favourites]);
 
-  const handleGenerate = async () => {
-    const ingList = ingredients.split(",").map((i) => i.trim()).filter(Boolean);
-    if (!ingList.length) { setError("Please enter at least one ingredient."); return; }
-    setError(""); setRecipe(null); setLoading(true);
-    try {
-      const res = await axios.post(`${API_URL}/generate`, {
-        ingredients: ingList,
-        cuisine: cuisine === "Any" ? null : cuisine,
-        max_time: maxTime,
-        servings: baseServings,
-      });
-      setRecipe(res.data);
-      setServings(baseServings);
-    } catch (e) {
-      setError((e.response && e.response.data && e.response.data.detail) || e.message || "Something went wrong.");
-    } finally { setLoading(false); }
-  };
-
-  const handleSave = () => {
+  const handleSave = (recipe) => {
     if (!recipe) return;
     if (favourites.some(f => f.title === recipe.title)) return;
     setFavourites([{ ...recipe, savedAt: new Date().toISOString() }, ...favourites]);
@@ -110,8 +110,42 @@ export default function App() {
     if (selectedFav === index) setSelectedFav(null);
   };
 
-  const isSaved = recipe && favourites.some(f => f.title === recipe.title);
-  const isDisabled = loading || !ingredients.trim();
+  const handleGenerate = async () => {
+    const ingList = ingredients.split(",").map(i => i.trim()).filter(Boolean);
+    if (!ingList.length) { setGenError("Please enter at least one ingredient."); return; }
+    setGenError(""); setGenRecipe(null); setGenLoading(true);
+    try {
+      const res = await axios.post(`${API_URL}/generate`, {
+        ingredients: ingList,
+        cuisine: cuisine === "Any" ? null : cuisine,
+        max_time: maxTime,
+        servings: baseServings,
+      });
+      setGenRecipe(res.data);
+      setGenServings(baseServings);
+    } catch (e) {
+      setGenError((e.response && e.response.data && e.response.data.detail) || e.message || "Something went wrong.");
+    } finally { setGenLoading(false); }
+  };
+
+  const handleFind = async () => {
+    if (!dish.trim()) { setFindError("Please enter a dish name."); return; }
+    setFindError(""); setFindRecipe(null); setFindLoading(true);
+    try {
+      const res = await axios.post(`${API_URL}/find`, {
+        dish: dish.trim(),
+        cuisine: findCuisine === "Any" ? null : findCuisine,
+        servings: findServings,
+      });
+      setFindRecipe(res.data);
+      setFindRecipeServings(findServings);
+    } catch (e) {
+      setFindError((e.response && e.response.data && e.response.data.detail) || e.message || "Something went wrong.");
+    } finally { setFindLoading(false); }
+  };
+
+  const isGenSaved = genRecipe && favourites.some(f => f.title === genRecipe.title);
+  const isFindSaved = findRecipe && favourites.some(f => f.title === findRecipe.title);
 
   return (
     <div>
@@ -122,7 +156,6 @@ export default function App() {
         .card { max-width: 680px; margin: 3rem auto; background: #1a1814; border: 1px solid #3a3530; border-radius: 4px; padding: 2.5rem; }
         h1 { font-size: 2.4rem; margin: 0; }
         .subtitle { color: #9a9080; font-style: italic; margin-top: 0.4rem; }
-        .logo { width: 160px; height: 160px; object-fit: cover; object-position: 50% 40%; border-radius: 50%; margin: 0 auto 0.75rem auto; display: block; }
         .tabs { display: flex; margin: 1.5rem 0 0; border-bottom: 1px solid #3a3530; }
         .tab { padding: 0.6rem 1.2rem; font-family: monospace; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: none; background: none; color: #9a9080; border-bottom: 2px solid transparent; margin-bottom: -1px; }
         .tab.active { color: #c8a96e; border-bottom-color: #c8a96e; }
@@ -138,9 +171,8 @@ export default function App() {
         .btn-primary:hover:not(:disabled) { background: #daba80; }
         .error { margin-top: 1.5rem; padding: 0.75rem 1rem; background: #2a1a18; border: 1px solid #6b3030; border-radius: 2px; color: #e07060; font-family: monospace; }
         .recipe-box { margin-top: 1.5rem; padding: 1.5rem; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; }
-        .recipe-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
         .recipe-title { font-size: 1.4rem; font-weight: 700; color: #c8a96e; margin-bottom: 0.5rem; }
-        .btn-save { background: none; border: 1px solid #3a3530; border-radius: 2px; color: #9a9080; font-family: monospace; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.4rem 0.8rem; cursor: pointer; }
+        .btn-save { background: none; border: 1px solid #3a3530; border-radius: 2px; color: #9a9080; font-family: monospace; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.4rem 0.8rem; cursor: pointer; white-space: nowrap; }
         .btn-save.saved { border-color: #c8a96e; color: #c8a96e; }
         .servings-row { display: flex; align-items: center; justify-content: space-between; margin: 0.8rem 0; padding: 0.6rem 0; border-top: 1px solid #2a2520; border-bottom: 1px solid #2a2520; }
         .servings-control { display: flex; align-items: center; gap: 0.75rem; }
@@ -172,94 +204,105 @@ export default function App() {
 
         <div className="tabs">
           <button className={`tab ${view === "generate" ? "active" : ""}`} onClick={() => setView("generate")}>Generate</button>
+          <button className={`tab ${view === "find" ? "active" : ""}`} onClick={() => setView("find")}>Find a Recipe</button>
           <button className={`tab ${view === "favourites" ? "active" : ""}`} onClick={() => setView("favourites")}>
             Favourites {favourites.length > 0 ? `(${favourites.length})` : ""}
           </button>
         </div>
 
+        {/* GENERATE TAB */}
         {view === "generate" && (
           <>
             <label>Ingredients</label>
             <input type="text" placeholder="eggs, tomato, basil, garlic…" value={ingredients}
-              onChange={(e) => setIngredients(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !isDisabled && handleGenerate()} />
+              onChange={e => setIngredients(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !genLoading && handleGenerate()} />
 
             <div className="row">
               <div>
                 <label>Cuisine</label>
-                <select value={cuisine} onChange={(e) => setCuisine(e.target.value)}>
-                  {CUISINES.map((c) => <option key={c} value={c}>{c}</option>)}
+                <select value={cuisine} onChange={e => setCuisine(e.target.value)}>
+                  {CUISINES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>
                 <label>Max time</label>
                 <div style={{display:"flex", alignItems:"center", gap:"0.75rem"}}>
-                  <input type="range" min={10} max={120} step={5} value={maxTime} onChange={(e) => setMaxTime(Number(e.target.value))} />
+                  <input type="range" min={10} max={120} step={5} value={maxTime} onChange={e => setMaxTime(Number(e.target.value))} />
                   <span className="time-val">{maxTime} min</span>
                 </div>
               </div>
             </div>
 
-            <div className="row" style={{marginTop:"1.2rem"}}>
-              <div>
-                <label>Servings</label>
-                <div className="servings-control">
-                  <button className="srv-btn" onClick={() => setBaseServings(Math.max(1, baseServings - 1))}>−</button>
-                  <span className="srv-val">{baseServings}</span>
-                  <button className="srv-btn" onClick={() => setBaseServings(baseServings + 1)}>+</button>
-                </div>
+            <div style={{marginTop:"1.2rem"}}>
+              <label>Servings</label>
+              <div className="servings-control">
+                <button className="srv-btn" onClick={() => setBaseServings(Math.max(1, baseServings - 1))}>−</button>
+                <span className="srv-val">{baseServings}</span>
+                <button className="srv-btn" onClick={() => setBaseServings(baseServings + 1)}>+</button>
               </div>
             </div>
 
-            <button className="btn-primary" onClick={handleGenerate} disabled={isDisabled}>
-              {loading ? <><span className="spinner" />Cooking…</> : "Generate Recipe"}
+            <button className="btn-primary" onClick={handleGenerate} disabled={genLoading || !ingredients.trim()}>
+              {genLoading ? <><span className="spinner" />Cooking…</> : "Generate Recipe"}
             </button>
 
-            {error && <div className="error">{error}</div>}
-
-            {recipe && (
-              <div className="recipe-box">
-                <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
-                  <div className="recipe-title">{recipe.title}</div>
-                  <button className={`btn-save ${isSaved ? "saved" : ""}`} onClick={handleSave}>
-                    {isSaved ? "✓ Saved" : "Save"}
-                  </button>
-                </div>
-
-                <div className="servings-row">
-                  <span className="section-label" style={{margin:0}}>Servings</span>
-                  <div className="servings-control">
-                    <button className="srv-btn" onClick={() => setServings(Math.max(1, servings - 1))}>−</button>
-                    <span className="srv-val">{servings}</span>
-                    <button className="srv-btn" onClick={() => setServings(servings + 1)}>+</button>
-                  </div>
-                </div>
-
-                {recipe.ingredients && recipe.ingredients.length > 0 && (
-                  <>
-                    <div className="section-label">Ingredients</div>
-                    <ul className="ingredient-list">
-                      {recipe.ingredients.map((ing, i) => (
-                        <li key={i}>{servings !== baseServings ? scaleQty(ing, servings / baseServings) : ing}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-                {recipe.steps && recipe.steps.length > 0 && (
-                  <>
-                    <div className="section-label">Method</div>
-                    <ol className="step-list">
-                      {recipe.steps.map((step, i) => (
-                        <li key={i}><span className="step-num">{i + 1}.</span><span>{step}</span></li>
-                      ))}
-                    </ol>
-                  </>
-                )}
-              </div>
+            {genError && <div className="error">{genError}</div>}
+            {genRecipe && (
+              <RecipeDisplay
+                recipe={genRecipe}
+                servings={genServings}
+                onServingsChange={setGenServings}
+                onSave={() => handleSave(genRecipe)}
+                isSaved={isGenSaved}
+              />
             )}
           </>
         )}
 
+        {/* FIND TAB */}
+        {view === "find" && (
+          <>
+            <label>Dish Name</label>
+            <input type="text" placeholder="Chicken Alfredo, Beef Stew, Tiramisu…" value={dish}
+              onChange={e => setDish(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !findLoading && handleFind()} />
+
+            <div className="row">
+              <div>
+                <label>Cuisine Style</label>
+                <select value={findCuisine} onChange={e => setFindCuisine(e.target.value)}>
+                  {CUISINES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label>Servings</label>
+                <div className="servings-control" style={{marginTop:"0.5rem"}}>
+                  <button className="srv-btn" onClick={() => setFindServings(Math.max(1, findServings - 1))}>−</button>
+                  <span className="srv-val">{findServings}</span>
+                  <button className="srv-btn" onClick={() => setFindServings(findServings + 1)}>+</button>
+                </div>
+              </div>
+            </div>
+
+            <button className="btn-primary" onClick={handleFind} disabled={findLoading || !dish.trim()}>
+              {findLoading ? <><span className="spinner" />Searching…</> : "Find Recipe"}
+            </button>
+
+            {findError && <div className="error">{findError}</div>}
+            {findRecipe && (
+              <RecipeDisplay
+                recipe={findRecipe}
+                servings={findRecipeServings}
+                onServingsChange={setFindRecipeServings}
+                onSave={() => handleSave(findRecipe)}
+                isSaved={isFindSaved}
+              />
+            )}
+          </>
+        )}
+
+        {/* FAVOURITES TAB */}
         {view === "favourites" && (
           <>
             {favourites.length === 0 && <div className="empty">No saved recipes yet. Generate one and hit Save!</div>}
@@ -271,7 +314,7 @@ export default function App() {
                     <div className="fav-name">{fav.title}</div>
                     <div className="fav-date">{new Date(fav.savedAt).toLocaleDateString()}</div>
                   </div>
-                  <button className="btn-delete" onClick={(e) => { e.stopPropagation(); handleDelete(i); }}>✕</button>
+                  <button className="btn-delete" onClick={e => { e.stopPropagation(); handleDelete(i); }}>✕</button>
                 </div>
               ))}
             </div>
@@ -279,7 +322,7 @@ export default function App() {
               <RecipeDisplay
                 recipe={favourites[selectedFav]}
                 servings={favServings[selectedFav] || favourites[selectedFav].base_servings || 2}
-                onServingsChange={(n) => setFavServings(s => ({...s, [selectedFav]: n}))}
+                onServingsChange={n => setFavServings(s => ({...s, [selectedFav]: n}))}
               />
             )}
           </>
