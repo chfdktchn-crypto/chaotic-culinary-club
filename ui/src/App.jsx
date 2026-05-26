@@ -331,11 +331,21 @@ function MyRecipesTab({ myRecipes, setMyRecipes }) {
   );
 }
 
+const COST_CATEGORIES = [
+  { label: "Food",          presets: [28, 30, 32, 35] },
+  { label: "Liquor",        presets: [18, 20, 22, 25] },
+  { label: "Beer",          presets: [20, 22, 25, 28] },
+  { label: "Wine",          presets: [25, 28, 30, 33] },
+  { label: "Non-Alcoholic", presets: [20, 25, 28, 30] },
+];
+
 // ── Costing Tab ─────────────────────────────────────────────────────────────
 function CostingTab({ favourites, genRecipe, findRecipe, myRecipes }) {
   const [prices, setPrices] = useState(loadPrices);
   const [selectedKey, setSelectedKey] = useState(null);
   const [costServings, setCostServings] = useState(2);
+  const [costCategory, setCostCategory] = useState(COST_CATEGORIES[0]);
+  const [targetCostPct, setTargetCostPct] = useState(30);
 
   const options = [];
   if (genRecipe) options.push({ key: "__gen__", label: `[Generated] ${genRecipe.title}`, recipe: genRecipe });
@@ -442,6 +452,84 @@ function CostingTab({ favourites, genRecipe, findRecipe, myRecipes }) {
           )}
           {!hasAnyCost && (
             <div className="empty" style={{paddingTop:"1rem"}}>Enter prices above to see cost breakdown.</div>
+          )}
+
+          {/* ── Pricing Calculator ── */}
+          {hasAnyCost && (
+            <div className="pricing-box">
+              <div className="section-label" style={{marginTop:0, marginBottom:"1rem"}}>Menu Pricing Calculator</div>
+
+              <div className="row" style={{marginBottom:"0.8rem"}}>
+                <div>
+                  <label style={{marginTop:0}}>Cost Category</label>
+                  <select
+                    value={costCategory.label}
+                    onChange={e => {
+                      const cat = COST_CATEGORIES.find(c => c.label === e.target.value);
+                      setCostCategory(cat);
+                      setTargetCostPct(cat.presets[1]);
+                    }}
+                  >
+                    {COST_CATEGORIES.map(c => <option key={c.label} value={c.label}>{c.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{marginTop:0}}>Target Cost %</label>
+                  <div style={{display:"flex", alignItems:"center", gap:"0.5rem"}}>
+                    <input
+                      type="number" min="1" max="99" step="0.5"
+                      className="cost-input"
+                      style={{width:"80px", padding:"0.6rem 0.5rem", fontSize:"1rem"}}
+                      value={targetCostPct}
+                      onChange={e => setTargetCostPct(parseFloat(e.target.value) || 0)}
+                    />
+                    <span style={{fontFamily:"monospace", color:"#c8a96e", fontSize:"1rem"}}>%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preset buttons */}
+              <div style={{display:"flex", gap:"0.5rem", flexWrap:"wrap", marginBottom:"1rem"}}>
+                {costCategory.presets.map(p => (
+                  <button
+                    key={p}
+                    className={`preset-btn ${targetCostPct === p ? "active" : ""}`}
+                    onClick={() => setTargetCostPct(p)}
+                  >{p}%</button>
+                ))}
+              </div>
+
+              {/* Results */}
+              {targetCostPct > 0 && targetCostPct < 100 && (() => {
+                const menuPrice = costPerServing / (targetCostPct / 100);
+                const grossProfit = menuPrice - costPerServing;
+                const actualPct = targetCostPct;
+                return (
+                  <div className="pricing-results">
+                    <div className="pricing-row">
+                      <span>{costCategory.label} Cost per Serving</span>
+                      <span className="pricing-val">${costPerServing.toFixed(2)}</span>
+                    </div>
+                    <div className="pricing-row">
+                      <span>Target {costCategory.label} Cost %</span>
+                      <span className="pricing-val">{actualPct}%</span>
+                    </div>
+                    <div className="pricing-row highlight">
+                      <span>Suggested Menu Price</span>
+                      <span className="pricing-val">${menuPrice.toFixed(2)}</span>
+                    </div>
+                    <div className="pricing-row">
+                      <span>Gross Profit per Serving</span>
+                      <span className="pricing-val">${grossProfit.toFixed(2)}</span>
+                    </div>
+                    <div className="pricing-row">
+                      <span>Gross Profit %</span>
+                      <span className="pricing-val">{(100 - actualPct).toFixed(1)}%</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           )}
         </>
       )}
@@ -599,6 +687,17 @@ export default function App() {
         .cost-total-row:last-child { border-bottom: none; }
         .cost-total-row span:first-child { font-size: 0.8rem; font-family: monospace; letter-spacing: 0.08em; text-transform: uppercase; color: #9a9080; }
         .cost-total-val { font-size: 1.1rem; font-weight: 700; color: #c8a96e; font-family: monospace; }
+        .pricing-box { margin-top: 1.5rem; padding: 1.2rem; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; }
+        .preset-btn { background: none; border: 1px solid #3a3530; border-radius: 2px; color: #9a9080; font-family: monospace; font-size: 0.75rem; letter-spacing: 0.08em; padding: 0.35rem 0.7rem; cursor: pointer; }
+        .preset-btn:hover { border-color: #c8a96e; color: #c8a96e; }
+        .preset-btn.active { background: #c8a96e; border-color: #c8a96e; color: #0f0e0c; font-weight: 700; }
+        .pricing-results { border: 1px solid #3a3530; border-radius: 2px; overflow: hidden; }
+        .pricing-row { display: flex; justify-content: space-between; align-items: center; padding: 0.55rem 0.9rem; border-bottom: 1px solid #2a2520; }
+        .pricing-row:last-child { border-bottom: none; }
+        .pricing-row span:first-child { font-size: 0.8rem; font-family: monospace; letter-spacing: 0.06em; text-transform: uppercase; color: #9a9080; }
+        .pricing-row.highlight { background: #1e1c18; }
+        .pricing-row.highlight span:first-child { color: #f5f0e8; }
+        .pricing-val { font-size: 1rem; font-weight: 700; color: #c8a96e; font-family: monospace; }
       `}</style>
       <div className="card">
         <div style={{display:"flex", alignItems:"center", gap:"1rem"}}>
