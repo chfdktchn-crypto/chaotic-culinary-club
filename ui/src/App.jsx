@@ -4,12 +4,19 @@ import axios from "axios";
 const API_URL = "https://captivating-harmony-production-c590.up.railway.app";
 const CUISINES = ["Any", "Italian", "Mexican", "Japanese", "Indian", "French", "Thai", "Mediterranean"];
 const STORAGE_KEY = "chefai_favourites";
+const PRICES_KEY = "chefai_prices";
 
 function loadFavourites() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
   catch { return []; }
 }
 function saveFavourites(favs) { localStorage.setItem(STORAGE_KEY, JSON.stringify(favs)); }
+
+function loadPrices() {
+  try { return JSON.parse(localStorage.getItem(PRICES_KEY) || "{}"); }
+  catch { return {}; }
+}
+function savePrices(prices) { localStorage.setItem(PRICES_KEY, JSON.stringify(prices)); }
 
 function scaleQty(ingredient, factor) {
   const match = ingredient.match(/^(\d+\.?\d*|\d+\/\d+)\s*/);
@@ -24,6 +31,17 @@ function scaleQty(ingredient, factor) {
   const scaled = qty * factor;
   const formatted = scaled === Math.floor(scaled) ? String(Math.floor(scaled)) : scaled.toFixed(1).replace(/\.?0+$/, "");
   return formatted + " " + ingredient.slice(match[0].length);
+}
+
+// Extract numeric quantity from an ingredient string
+function parseQty(ingredient) {
+  const match = ingredient.match(/^(\d+\.?\d*|\d+\/\d+)\s*/);
+  if (!match) return 1;
+  if (match[1].includes("/")) {
+    const [n, d] = match[1].split("/");
+    return parseFloat(n) / parseFloat(d);
+  }
+  return parseFloat(match[1]);
 }
 
 function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) {
@@ -66,6 +84,130 @@ function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) 
               <li key={i}><span className="step-num">{i + 1}.</span><span>{step}</span></li>
             ))}
           </ol>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CostingTab({ favourites, genRecipe, findRecipe }) {
+  const [prices, setPrices] = useState(loadPrices);
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [costServings, setCostServings] = useState(2);
+
+  // Build list of available recipes
+  const options = [];
+  if (genRecipe) options.push({ key: "__gen__", label: `[Generated] ${genRecipe.title}`, recipe: genRecipe });
+  if (findRecipe) options.push({ key: "__find__", label: `[Found] ${findRecipe.title}`, recipe: findRecipe });
+  favourites.forEach((fav, i) => options.push({ key: `fav_${i}`, label: fav.title, recipe: fav }));
+
+  // Auto-select first option when options change
+  useEffect(() => {
+    if (options.length > 0 && (selectedKey === null || !options.find(o => o.key === selectedKey))) {
+      setSelectedKey(options[0].key);
+      setCostServings(options[0].recipe.base_servings || 2);
+    }
+  }, [genRecipe, findRecipe, favourites.length]);
+
+  const selected = options.find(o => o.key === selectedKey);
+  const recipe = selected ? selected.recipe : null;
+  const factor = recipe ? costServings / (recipe.base_servings || 2) : 1;
+
+  const handlePriceChange = (ingredientName, value) => {
+    const updated = { ...prices, [ingredientName]: value };
+    setPrices(updated);
+    savePrices(updated);
+  };
+
+  const handleRecipeSelect = (key) => {
+    setSelectedKey(key);
+    const opt = options.find(o => o.key === key);
+    if (opt) setCostServings(opt.recipe.base_servings || 2);
+  };
+
+  // Compute costs
+  let totalCost = 0;
+  const rows = recipe ? recipe.ingredients.map(ing => {
+    const scaledQty = factor !== 1 ? parseQty(scaleQty(ing, factor)) : parseQty(ing);
+    const baseQty = parseQty(ing);
+    const priceKey = ing.toLowerCase().trim();
+    const priceVal = parseFloat(prices[priceKey] || "");
+    const lineCost = isNaN(priceVal) ? null : priceVal;
+    if (lineCost !== null) totalCost += lineCost;
+    return { ing, scaledIng: factor !== 1 ? scaleQty(ing, factor) : ing, priceKey, lineCost };
+  }) : [];
+
+  const hasAnyCost = rows.some(r => r.lineCost !== null);
+  const costPerServing = hasAnyCost ? totalCost / costServings : null;
+
+  if (options.length === 0) {
+    return <div className="empty">No recipes available to cost yet. Generate or find a recipe first, or save some favourites.</div>;
+  }
+
+  return (
+    <div>
+      <label>Select Recipe</label>
+      <select value={selectedKey || ""} onChange={e => handleRecipeSelect(e.target.value)}>
+        {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+      </select>
+
+      {recipe && (
+        <>
+          <div className="servings-row" style={{marginTop:"1.2rem"}}>
+            <span className="section-label" style={{margin:0}}>Servings</span>
+            <div className="servings-control">
+              <button className="srv-btn" onClick={() => setCostServings(Math.max(1, costServings - 1))}>−</button>
+              <span className="srv-val">{costServings}</span>
+              <button className="srv-btn" onClick={() => setCostServings(costServings + 1)}>+</button>
+            </div>
+          </div>
+
+          <div className="section-label" style={{marginTop:"1.2rem"}}>Ingredient Costs</div>
+          <div className="cost-hint">Enter the total price you pay for each ingredient (e.g. $3.50 for a whole can of tomatoes). Leave blank to exclude from total.</div>
+
+          <div className="cost-table">
+            <div className="cost-header">
+              <span>Ingredient</span>
+              <span>Qty needed</span>
+              <span>Price ($)</span>
+              <span>Cost</span>
+            </div>
+            {rows.map((row, i) => (
+              <div key={i} className="cost-row">
+                <span className="cost-ing">{row.ing}</span>
+                <span className="cost-qty">{row.scaledIng}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="cost-input"
+                  placeholder="0.00"
+                  value={prices[row.priceKey] || ""}
+                  onChange={e => handlePriceChange(row.priceKey, e.target.value)}
+                />
+                <span className="cost-line">
+                  {row.lineCost !== null ? `$${row.lineCost.toFixed(2)}` : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {hasAnyCost && (
+            <div className="cost-totals">
+              <div className="cost-total-row">
+                <span>Total Recipe Cost</span>
+                <span className="cost-total-val">${totalCost.toFixed(2)}</span>
+              </div>
+              <div className="cost-total-row">
+                <span>Cost Per Serving ({costServings} servings)</span>
+                <span className="cost-total-val">${costPerServing.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
+          {!hasAnyCost && (
+            <div className="empty" style={{paddingTop:"1rem"}}>Enter prices above to see cost breakdown.</div>
+          )}
         </>
       )}
     </div>
@@ -160,8 +302,8 @@ export default function App() {
         .tab { padding: 0.6rem 1.2rem; font-family: monospace; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: none; background: none; color: #9a9080; border-bottom: 2px solid transparent; margin-bottom: -1px; }
         .tab.active { color: #c8a96e; border-bottom-color: #c8a96e; }
         label { display: block; font-size: 0.75rem; font-family: monospace; letter-spacing: 0.12em; text-transform: uppercase; color: #9a9080; margin-bottom: 0.5rem; margin-top: 1.2rem; }
-        input[type=text], select { width: 100%; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; color: #f5f0e8; font-size: 1rem; font-family: Georgia, serif; padding: 0.75rem 1rem; outline: none; }
-        input[type=text]:focus, select:focus { border-color: #c8a96e; }
+        input[type=text], input[type=number], select { width: 100%; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; color: #f5f0e8; font-size: 1rem; font-family: Georgia, serif; padding: 0.75rem 1rem; outline: none; }
+        input[type=text]:focus, input[type=number]:focus, select:focus { border-color: #c8a96e; }
         .row { display: flex; gap: 1rem; }
         .row > div { flex: 1; }
         input[type=range] { width: 100%; accent-color: #c8a96e; }
@@ -197,13 +339,28 @@ export default function App() {
         .btn-delete:hover { color: #e07060; }
         .empty { text-align: center; color: #9a9080; font-style: italic; padding: 2rem 0; }
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #0f0e0c; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
+        .cost-hint { font-size: 0.8rem; color: #9a9080; font-style: italic; margin-bottom: 0.8rem; margin-top: 0.3rem; }
+        .cost-table { border: 1px solid #3a3530; border-radius: 2px; overflow: hidden; margin-top: 0.5rem; }
+        .cost-header { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #0f0e0c; font-size: 0.65rem; font-family: monospace; letter-spacing: 0.12em; text-transform: uppercase; color: #9a9080; border-bottom: 1px solid #3a3530; }
+        .cost-row { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr; gap: 0.5rem; padding: 0.5rem 0.75rem; align-items: center; border-bottom: 1px solid #2a2520; }
+        .cost-row:last-child { border-bottom: none; }
+        .cost-row:nth-child(even) { background: #161412; }
+        .cost-ing { font-size: 0.9rem; color: #d5cfc5; }
+        .cost-qty { font-size: 0.85rem; color: #9a9080; font-family: monospace; }
+        .cost-input { width: 100%; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; color: #f5f0e8; font-size: 0.85rem; font-family: monospace; padding: 0.3rem 0.5rem; outline: none; }
+        .cost-input:focus { border-color: #c8a96e; }
+        .cost-line { font-size: 0.85rem; font-family: monospace; color: #c8a96e; text-align: right; }
+        .cost-totals { margin-top: 1rem; padding: 1rem; background: #0f0e0c; border: 1px solid #3a3530; border-radius: 2px; }
+        .cost-total-row { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid #2a2520; }
+        .cost-total-row:last-child { border-bottom: none; }
+        .cost-total-row span:first-child { font-size: 0.8rem; font-family: monospace; letter-spacing: 0.08em; text-transform: uppercase; color: #9a9080; }
+        .cost-total-val { font-size: 1.1rem; font-weight: 700; color: #c8a96e; font-family: monospace; }
       `}</style>
       <div className="card">
         <div style={{display:"flex", alignItems:"center", gap:"1rem"}}>
-  <img src="/logo.png" alt="Chaotic Culinary Club" style={{height:"56px", width:"auto"}} />
-  <h1>The Chaotic Culinary Club</h1>
-</div>
-
+          <img src="/logo.png" alt="Chaotic Culinary Club" style={{height:"56px", width:"auto"}} />
+          <h1>The Chaotic Culinary Club</h1>
+        </div>
         <p className="subtitle">Let's get Culinating!!</p>
 
         <div className="tabs">
@@ -212,6 +369,7 @@ export default function App() {
           <button className={`tab ${view === "favourites" ? "active" : ""}`} onClick={() => setView("favourites")}>
             Favourites {favourites.length > 0 ? `(${favourites.length})` : ""}
           </button>
+          <button className={`tab ${view === "costing" ? "active" : ""}`} onClick={() => setView("costing")}>Costing</button>
         </div>
 
         {/* GENERATE TAB */}
@@ -330,6 +488,15 @@ export default function App() {
               />
             )}
           </>
+        )}
+
+        {/* COSTING TAB */}
+        {view === "costing" && (
+          <CostingTab
+            favourites={favourites}
+            genRecipe={genRecipe}
+            findRecipe={findRecipe}
+          />
         )}
       </div>
     </div>
