@@ -50,17 +50,80 @@ function parseQty(ingredient) {
   return parseFloat(match[1]);
 }
 
+
+function printRecipe(recipe, servings, prices) {
+  const factor = servings / (recipe.base_servings || 2);
+  const rows = (recipe.ingredients || []).map(ing => {
+    const scaledIng = factor !== 1 ? scaleQty(ing, factor) : ing;
+    const priceKey = ing.toLowerCase().trim();
+    const priceVal = parseFloat((prices || {})[priceKey] || "");
+    const lineCost = isNaN(priceVal) ? null : priceVal;
+    return { ing, scaledIng, lineCost };
+  });
+  const hasCosts = rows.some(r => r.lineCost !== null);
+  const totalCost = rows.reduce((s, r) => s + (r.lineCost || 0), 0);
+  const costPerServing = hasCosts ? totalCost / servings : null;
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>${recipe.title}</title><style>
+    body{font-family:Georgia,serif;color:#000;background:#fff;padding:2rem;max-width:700px;margin:0 auto;}
+    h1{font-size:1.8rem;margin:0 0 0.3rem;}
+    .servings{font-family:monospace;font-size:0.85rem;color:#555;margin-bottom:1.2rem;}
+    .section{font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:#555;margin:1.2rem 0 0.4rem;border-bottom:1px solid #ccc;padding-bottom:0.2rem;}
+    ul{list-style:none;padding:0;margin:0;}
+    ul li{padding:0.25rem 0;border-bottom:1px solid #eee;font-size:0.95rem;}
+    ol{list-style:none;padding:0;margin:0;}
+    ol li{display:flex;gap:0.75rem;padding:0.4rem 0;border-bottom:1px solid #eee;font-size:0.95rem;line-height:1.5;}
+    .num{font-weight:700;min-width:20px;font-family:monospace;}
+    table{width:100%;border-collapse:collapse;margin-top:0.5rem;font-size:0.85rem;}
+    th{text-align:left;font-family:monospace;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;border-bottom:2px solid #000;padding:0.3rem 0.5rem;}
+    td{padding:0.3rem 0.5rem;border-bottom:1px solid #eee;}
+    .totals{margin-top:1rem;border-top:2px solid #000;padding-top:0.5rem;}
+    .total-row{display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.9rem;}
+    .total-row.bold{font-weight:700;font-size:1.05rem;}
+    @media print{body{padding:1rem;}}
+  </style></head><body>
+    <h1>${recipe.title}</h1>
+    <div class="servings">Serves ${servings}</div>
+    ${recipe.ingredients && recipe.ingredients.length ? `
+      <div class="section">Ingredients</div>
+      <ul>${rows.map(r => `<li>${r.scaledIng}</li>`).join('')}</ul>
+    ` : ''}
+    ${recipe.steps && recipe.steps.length ? `
+      <div class="section">Method</div>
+      <ol>${recipe.steps.map((s,i) => `<li><span class="num">${i+1}.</span><span>${s}</span></li>`).join('')}</ol>
+    ` : ''}
+    ${hasCosts ? `
+      <div class="section">Cost Breakdown</div>
+      <table>
+        <thead><tr><th>Ingredient</th><th>Cost</th></tr></thead>
+        <tbody>${rows.filter(r=>r.lineCost!==null).map(r=>`<tr><td>${r.scaledIng}</td><td>$${r.lineCost.toFixed(2)}</td></tr>`).join('')}</tbody>
+      </table>
+      <div class="totals">
+        <div class="total-row"><span>Total Recipe Cost</span><span>$${totalCost.toFixed(2)}</span></div>
+        <div class="total-row bold"><span>Cost Per Serving</span><span>$${costPerServing.toFixed(2)}</span></div>
+      </div>
+    ` : ''}
+  </body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); }, 500);
+}
+
 function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) {
   const factor = servings / (recipe.base_servings || 2);
   return (
     <div className="recipe-box">
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
         <div className="recipe-title">{recipe.title}</div>
-        {onSave && (
-          <button className={`btn-save ${isSaved ? "saved" : ""}`} onClick={onSave}>
-            {isSaved ? "✓ Saved" : "Save"}
-          </button>
-        )}
+        <div style={{display:"flex", gap:"0.5rem"}}>
+          {onSave && (
+            <button className={`btn-save ${isSaved ? "saved" : ""}`} onClick={onSave}>
+              {isSaved ? "✓ Saved" : "Save"}
+            </button>
+          )}
+          <button className="btn-save" onClick={() => printRecipe(recipe, servings, {})}>🖨 Print</button>
+        </div>
       </div>
       <div className="servings-row">
         <span className="section-label" style={{margin:0}}>Servings</span>
@@ -483,6 +546,16 @@ function CostingTab({ favourites, genRecipe, findRecipe, myRecipes }) {
             <div className="empty" style={{paddingTop:"1rem"}}>Enter prices above to see cost breakdown.</div>
           )}
 
+          {hasAnyCost && recipe && (
+            <button
+              className="btn-primary no-print"
+              style={{marginTop:"1.5rem"}}
+              onClick={() => printRecipe(recipe, costServings, prices)}
+            >
+              🖨 Export Recipe + Costs to PDF
+            </button>
+          )}
+
           {/* ── Pricing Calculator ── */}
           {hasAnyCost && (
             <div className="pricing-box">
@@ -761,6 +834,28 @@ export default function App() {
         .btn-enter { display: inline-block; background: #c8a96e; color: #0f0e0c; border: none; border-radius: 2px; padding: 1rem 2.5rem; font-size: 1.1rem; font-family: Georgia, serif; font-weight: 700; cursor: pointer; letter-spacing: 0.05em; transition: background 0.15s, transform 0.15s; }
         .btn-enter:hover { background: #daba80; transform: translateY(-2px); }
         .hero-divider { border: none; border-top: 1px solid #3a3530; margin: 0; }
+
+        @media print {
+          body { background: #fff !important; color: #000 !important; }
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+          .print-area { max-width: 100% !important; margin: 0 !important; padding: 1rem !important; border: none !important; background: #fff !important; }
+          .print-title { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem; color: #000; }
+          .print-servings { font-size: 0.9rem; color: #555; margin-bottom: 1rem; font-family: monospace; }
+          .print-section { font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; color: #555; margin: 1rem 0 0.4rem; border-bottom: 1px solid #ccc; padding-bottom: 0.2rem; }
+          .print-ing-list { list-style: none; padding: 0; margin: 0; }
+          .print-ing-list li { padding: 0.25rem 0; border-bottom: 1px solid #eee; font-size: 0.95rem; }
+          .print-step-list { list-style: none; padding: 0; margin: 0; }
+          .print-step-list li { display: flex; gap: 0.75rem; padding: 0.4rem 0; border-bottom: 1px solid #eee; font-size: 0.95rem; line-height: 1.5; }
+          .print-step-num { font-family: monospace; font-weight: 700; min-width: 20px; }
+          .print-cost-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.85rem; }
+          .print-cost-table th { text-align: left; font-family: monospace; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 2px solid #000; padding: 0.3rem 0.5rem; }
+          .print-cost-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #eee; }
+          .print-cost-table tr:last-child td { border-bottom: none; }
+          .print-totals { margin-top: 1rem; border-top: 2px solid #000; padding-top: 0.5rem; }
+          .print-total-row { display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.9rem; }
+          .print-total-row.bold { font-weight: 700; font-size: 1rem; }
+        }
       `}</style>
 
       {/* HERO SECTION */}
