@@ -112,16 +112,47 @@ function printRecipe(recipe, servings, prices) {
 
 function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) {
   const factor = servings / (recipe.base_servings || 2);
+  const [nutrition, setNutrition] = useState(null);
+  const [nutLoading, setNutLoading] = useState(false);
+  const [nutError, setNutError] = useState("");
+
+  const handleNutrition = async () => {
+    setNutLoading(true); setNutError(""); setNutrition(null);
+    try {
+      const ingredientList = recipe.ingredients.map(ing => factor !== 1 ? scaleQty(ing, factor) : ing).join("\n");
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 400,
+          system: `You are a nutrition estimator. Given a list of ingredients for a recipe serving ${servings} people, estimate the total nutritional content PER SERVING. Return ONLY a JSON object, no markdown, no preamble:
+{"calories":"320 kcal","protein":"24g","carbs":"18g","fat":"12g","fibre":"4g","sodium":"480mg"}
+Use realistic estimates. If you cannot estimate, use "—".`,
+          messages: [{ role: "user", content: `Recipe: ${recipe.title}\nServings: ${servings}\nIngredients:\n${ingredientList}` }],
+        }),
+      });
+      const data = await response.json();
+      const raw = data.content[0].text.replace(/\`\`\`json|\`\`\`/g, "").trim();
+      setNutrition(JSON.parse(raw));
+    } catch(e) {
+      setNutError("Couldn't estimate nutrition. Try again.");
+    } finally { setNutLoading(false); }
+  };
+
   return (
     <div className="recipe-box">
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
         <div className="recipe-title">{recipe.title}</div>
-        <div style={{display:"flex", gap:"0.5rem"}}>
+        <div style={{display:"flex", gap:"0.5rem", flexWrap:"wrap", justifyContent:"flex-end"}}>
           {onSave && (
             <button className={`btn-save ${isSaved ? "saved" : ""}`} onClick={onSave}>
               {isSaved ? "✓ Saved" : "Save"}
             </button>
           )}
+          <button className="btn-nutrition" onClick={handleNutrition} disabled={nutLoading}>
+            {nutLoading ? "Estimating…" : "⚡ Nutrition"}
+          </button>
           <button className="btn-save" onClick={() => printRecipe(recipe, servings, {})}>🖨 Print</button>
         </div>
       </div>
@@ -152,6 +183,28 @@ function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) 
             ))}
           </ol>
         </>
+      )}
+      {nutError && <div className="error" style={{marginTop:"0.75rem"}}>{nutError}</div>}
+      {nutrition && (
+        <div className="nutrition-box">
+          <div className="section-label" style={{marginTop:0}}>Nutrition Per Serving</div>
+          <div className="nutrition-grid">
+            {[
+              {label:"Calories", val:nutrition.calories},
+              {label:"Protein",  val:nutrition.protein},
+              {label:"Carbs",    val:nutrition.carbs},
+              {label:"Fat",      val:nutrition.fat},
+              {label:"Fibre",    val:nutrition.fibre},
+              {label:"Sodium",   val:nutrition.sodium},
+            ].map(n => (
+              <div key={n.label} className="nutrition-cell">
+                <span className="nutrition-val">{n.val}</span>
+                <span className="nutrition-label">{n.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="nutrition-disclaimer">⚠ AI estimates only — not suitable for medical or dietary planning.</div>
+        </div>
       )}
     </div>
   );
@@ -856,6 +909,16 @@ export default function App() {
           .print-total-row { display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.9rem; }
           .print-total-row.bold { font-weight: 700; font-size: 1rem; }
         }
+
+        .nutrition-box { margin-top: 1rem; padding: 1rem; background: #12110e; border: 1px solid #3a3530; border-radius: 2px; }
+        .nutrition-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0.8rem 0; }
+        .nutrition-cell { text-align: center; padding: 0.6rem 0.3rem; background: #0f0e0c; border: 1px solid #2a2520; border-radius: 2px; }
+        .nutrition-val { font-size: 1.1rem; font-weight: 700; color: #c8a96e; font-family: monospace; display: block; }
+        .nutrition-label { font-size: 0.6rem; font-family: monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9080; display: block; margin-top: 0.2rem; }
+        .nutrition-disclaimer { font-size: 0.7rem; color: #6a6560; font-style: italic; margin-top: 0.6rem; }
+        .btn-nutrition { background: none; border: 1px solid #3a3530; border-radius: 2px; color: #9a9080; font-family: monospace; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.4rem 0.8rem; cursor: pointer; white-space: nowrap; }
+        .btn-nutrition:hover { border-color: #c8a96e; color: #c8a96e; }
+        .btn-nutrition:disabled { opacity: 0.5; cursor: not-allowed; }
       `}</style>
 
       {/* HERO SECTION */}
