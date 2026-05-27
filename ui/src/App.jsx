@@ -751,8 +751,8 @@ export default function App() {
         .btn-surprise:disabled { background: #3a3530; color: #9a9080; cursor: not-allowed; box-shadow: none; }
 
         @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        .hero { text-align: center; padding: 5rem 2rem 4rem; animation: fadeIn 0.8s ease-out; }
-        .hero-badge { width: 180px; height: 180px; object-fit: contain; margin: 0 auto 2rem; display: block; filter: drop-shadow(0 8px 32px rgba(200,169,110,0.3)); }
+        .hero { text-align: center; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; animation: fadeIn 0.8s ease-out; }
+        .hero-badge { width: 300px; height: 300px; object-fit: contain; margin: 0 auto 2.5rem; display: block; filter: drop-shadow(0 8px 40px rgba(200,169,110,0.35)); }
         .hero-title { font-size: 3rem; color: #f5f0e8; margin: 0 0 0.5rem; letter-spacing: 0.02em; }
         .hero-tagline { font-size: 1.2rem; color: #9a9080; font-style: italic; margin: 0 0 2.5rem; }
         .hero-features { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-bottom: 2.5rem; }
