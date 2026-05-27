@@ -119,22 +119,13 @@ function RecipeDisplay({ recipe, servings, onServingsChange, onSave, isSaved }) 
   const handleNutrition = async () => {
     setNutLoading(true); setNutError(""); setNutrition(null);
     try {
-      const ingredientList = recipe.ingredients.map(ing => factor !== 1 ? scaleQty(ing, factor) : ing).join("\n");
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 400,
-          system: `You are a nutrition estimator. Given a list of ingredients for a recipe serving ${servings} people, estimate the total nutritional content PER SERVING. Return ONLY a JSON object, no markdown, no preamble:
-{"calories":"320 kcal","protein":"24g","carbs":"18g","fat":"12g","fibre":"4g","sodium":"480mg"}
-Use realistic estimates. If you cannot estimate, use "—".`,
-          messages: [{ role: "user", content: `Recipe: ${recipe.title}\nServings: ${servings}\nIngredients:\n${ingredientList}` }],
-        }),
+      const scaledIngredients = recipe.ingredients.map(ing => factor !== 1 ? scaleQty(ing, factor) : ing);
+      const res = await axios.post(`${API_URL}/nutrition`, {
+        title: recipe.title,
+        ingredients: scaledIngredients,
+        servings: servings,
       });
-      const data = await response.json();
-      const raw = data.content[0].text.replace(/\`\`\`json|\`\`\`/g, "").trim();
-      setNutrition(JSON.parse(raw));
+      setNutrition(res.data);
     } catch(e) {
       setNutError("Couldn't estimate nutrition. Try again.");
     } finally { setNutLoading(false); }
@@ -296,28 +287,8 @@ function PasteParser({ onParsed, onCancel }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `You are a recipe parser. The user will paste in a recipe in any format. 
-Extract it and return ONLY a JSON object with this exact structure, no markdown, no preamble:
-{
-  "title": "Recipe Name",
-  "base_servings": 4,
-  "ingredients": ["2 cups flour", "1 tsp salt"],
-  "steps": ["Mix dry ingredients.", "Add wet ingredients and stir."]
-}
-Make sure base_servings is a number. If servings are not mentioned, default to 4.`,
-          messages: [{ role: "user", content: text }],
-        }),
-      });
-      const data = await response.json();
-      const raw = data.content[0].text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(raw);
-      onParsed(parsed);
+      const res = await axios.post(`${API_URL}/parse`, { text });
+      onParsed(res.data);
     } catch (e) {
       setError("Couldn't parse that recipe. Try the manual form instead, or check the text and try again.");
     } finally {

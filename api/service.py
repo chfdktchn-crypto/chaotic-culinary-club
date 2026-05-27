@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import anthropic
 import os
 import re
+import json
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -29,6 +30,12 @@ class RecipeRequest(BaseModel):
 class FindRequest(BaseModel):
     dish: str
     cuisine: str | None = None
+    servings: int = 2
+
+
+class NutritionRequest(BaseModel):
+    title: str
+    ingredients: list[str]
     servings: int = 2
 
 
@@ -132,6 +139,83 @@ async def find(req: FindRequest):
     return {**parsed, "model": "claude-sonnet-4"}
 
 
+@app.post("/nutrition")
+async def nutrition(req: NutritionRequest):
+    if not req.ingredients:
+        raise HTTPException(status_code=422, detail="No ingredients provided.")
+
+    ingredient_list = "\n".join(req.ingredients)
+    prompt = f"""You are a nutrition estimator. Given the ingredients below for a recipe serving {req.servings} people, estimate the nutritional content PER SERVING.
+
+Recipe: {req.title}
+Servings: {req.servings}
+Ingredients:
+{ingredient_list}
+
+Return ONLY a JSON object with no markdown, no preamble, no explanation:
+{{"calories":"320 kcal","protein":"24g","carbs":"18g","fat":"12g","fibre":"4g","sodium":"480mg"}}
+
+Use realistic estimates based on the ingredients and quantities. If you truly cannot estimate a value, use "—"."""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=200,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    text = message.content[0].text.strip()
+    # Strip any accidental markdown fences
+    text = re.sub(r"```json|```", "", text).strip()
+
+    try:
+        data = json.loads(text)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Could not parse nutrition response.")
+
+    return data
+
+
+
+
+class ParseRequest(BaseModel):
+    text: str
+
+
+@app.post("/parse")
+async def parse(req: ParseRequest):
+    if not req.text.strip():
+        raise HTTPException(status_code=422, detail="No recipe text provided.")
+
+    prompt = f"""You are a recipe parser. The user will paste in a recipe in any format.
+Extract it and return ONLY a JSON object with this exact structure, no markdown, no preamble:
+{{
+  "title": "Recipe Name",
+  "base_servings": 4,
+  "ingredients": ["2 cups flour", "1 tsp salt"],
+  "steps": ["Mix dry ingredients.", "Add wet ingredients and stir."]
+}}
+Make sure base_servings is a number. If servings are not mentioned, default to 4.
+
+Recipe text:
+{req.text}"""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=1000,
+        messages=[{{"role": "user", "content": prompt}}]
+    )
+
+    text = message.content[0].text.strip()
+    text = re.sub(r"```json|```", "", text).strip()
+
+    try:
+        data = json.loads(text)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Could not parse recipe text.")
+
+    return data
+
 @app.get("/")
 async def root():
     return {"status": "Chef-AI API ready", "model": "claude-sonnet-4"}
+
