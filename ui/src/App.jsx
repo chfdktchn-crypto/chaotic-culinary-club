@@ -551,6 +551,7 @@ export default function App() {
   const [selectedFav, setSelectedFav] = useState(null);
   const [favServings, setFavServings] = useState({});
   const [myRecipes, setMyRecipes] = useState(loadMyRecipes);
+  const [appVisible, setAppVisible] = useState(false);
 
   const [ingredients, setIngredients] = useState("");
   const [cuisine, setCuisine] = useState("Any");
@@ -748,7 +749,42 @@ export default function App() {
         .btn-surprise { position: fixed; bottom: 2rem; right: 2rem; z-index: 999; background: #c8a96e; color: #0f0e0c; border: none; border-radius: 50px; padding: 0.85rem 1.4rem; font-size: 1rem; font-family: Georgia, serif; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.5); transition: transform 0.15s, background 0.15s; }
         .btn-surprise:hover:not(:disabled) { background: #daba80; animation: wobble 0.4s ease-in-out; }
         .btn-surprise:disabled { background: #3a3530; color: #9a9080; cursor: not-allowed; box-shadow: none; }
+
+        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        .hero { text-align: center; padding: 5rem 2rem 4rem; animation: fadeIn 0.8s ease-out; }
+        .hero-badge { width: 180px; height: 180px; object-fit: contain; margin: 0 auto 2rem; display: block; filter: drop-shadow(0 8px 32px rgba(200,169,110,0.3)); }
+        .hero-title { font-size: 3rem; color: #f5f0e8; margin: 0 0 0.5rem; letter-spacing: 0.02em; }
+        .hero-tagline { font-size: 1.2rem; color: #9a9080; font-style: italic; margin: 0 0 2.5rem; }
+        .hero-features { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-bottom: 2.5rem; }
+        .hero-feature { font-family: monospace; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: #9a9080; display: flex; align-items: center; gap: 0.4rem; }
+        .hero-feature span { color: #c8a96e; font-size: 1rem; }
+        .btn-enter { display: inline-block; background: #c8a96e; color: #0f0e0c; border: none; border-radius: 2px; padding: 1rem 2.5rem; font-size: 1.1rem; font-family: Georgia, serif; font-weight: 700; cursor: pointer; letter-spacing: 0.05em; transition: background 0.15s, transform 0.15s; }
+        .btn-enter:hover { background: #daba80; transform: translateY(-2px); }
+        .hero-divider { border: none; border-top: 1px solid #3a3530; margin: 0; }
       `}</style>
+
+      {/* HERO SECTION */}
+      {!appVisible && (
+        <div className="hero">
+          <img src="/logo-alt.png" alt="The Chaotic Culinary Club" className="hero-badge" />
+          <h1 className="hero-title">The Chaotic Culinary Club</h1>
+          <p className="hero-tagline">Let's get Culinating!!</p>
+          <div className="hero-features">
+            <div className="hero-feature"><span>🎲</span> Surprise Me</div>
+            <div className="hero-feature"><span>🔍</span> Find Recipes</div>
+            <div className="hero-feature"><span>⭐</span> Save Favourites</div>
+            <div className="hero-feature"><span>💰</span> Cost &amp; Price</div>
+            <div className="hero-feature"><span>📋</span> My Recipes</div>
+          </div>
+          <button className="btn-enter" onClick={() => setAppVisible(true)}>
+            Enter the Club
+          </button>
+        </div>
+      )}
+      {!appVisible && <hr className="hero-divider" />}
+
+      {/* APP */}
+      {appVisible && (
       <div className="card">
         <div style={{display:"flex", alignItems:"center", gap:"1rem"}}>
           <img src="/logo.png" alt="Chaotic Culinary Club" style={{height:"56px", width:"auto"}} />
@@ -878,7 +914,8 @@ export default function App() {
         {view === "costing" && (
           <CostingTab favourites={favourites} genRecipe={genRecipe} findRecipe={findRecipe} myRecipes={myRecipes} />
         )}
-
+      </div>
+      )}
       {/* SURPRISE ME floating button */}
       {(view === "generate" || view === "find") && (
         <button
@@ -889,7 +926,6 @@ export default function App() {
           🎲 Surprise Me!
         </button>
       )}
-</div>
     </div>
   );
 }
