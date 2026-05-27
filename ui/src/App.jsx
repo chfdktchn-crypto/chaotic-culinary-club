@@ -164,7 +164,7 @@ function RecipeForm({ initial, onSave, onCancel }) {
           Save Recipe
         </button>
         <button className="btn-secondary" onClick={onCancel}>Cancel</button>
-      </div>
+</div>
     </div>
   );
 }
@@ -226,7 +226,7 @@ Make sure base_servings is a number. If servings are not mentioned, default to 4
           {loading ? <><span className="spinner" />Parsing…</> : "Parse Recipe"}
         </button>
         <button className="btn-secondary" onClick={onCancel}>Cancel</button>
-      </div>
+</div>
     </div>
   );
 }
@@ -326,7 +326,7 @@ function MyRecipesTab({ myRecipes, setMyRecipes }) {
             )}
           </div>
         ))}
-      </div>
+</div>
     </div>
   );
 }
@@ -355,7 +355,7 @@ function PricingResults({ category, costPerServing, targetPct }) {
       <div className="pricing-row">
         <span>Gross Profit %</span>
         <span className="pricing-val">{(100 - targetPct).toFixed(1)}%</span>
-      </div>
+</div>
     </div>
   );
 }
@@ -616,6 +616,45 @@ export default function App() {
     } finally { setFindLoading(false); }
   };
 
+
+  const SURPRISE_CUISINES = ["Italian", "Mexican", "Japanese", "Indian", "French", "Thai", "Mediterranean"];
+  const handleSurprise = async () => {
+    const randCuisine = SURPRISE_CUISINES[Math.floor(Math.random() * SURPRISE_CUISINES.length)];
+    const randTime = [15, 20, 25, 30, 40, 45, 60][Math.floor(Math.random() * 7)];
+    const randServings = Math.floor(Math.random() * 6) + 1;
+    if (view === "find") {
+      const dishes = ["pasta","curry","soup","stew","stir fry","risotto","tacos","salad","burger","pizza","noodles","dumplings","paella","tagine","ramen"];
+      const randDish = dishes[Math.floor(Math.random() * dishes.length)];
+      setDish(randDish);
+      setFindCuisine(randCuisine);
+      setFindServings(randServings);
+      setFindError(""); setFindRecipe(null); setFindLoading(true);
+      try {
+        const res = await axios.post(`${API_URL}/find`, { dish: randDish, cuisine: randCuisine, servings: randServings });
+        setFindRecipe(res.data);
+        setFindRecipeServings(randServings);
+      } catch (e) {
+        setFindError((e.response && e.response.data && e.response.data.detail) || e.message || "Something went wrong.");
+      } finally { setFindLoading(false); }
+    } else {
+      const pantry = ["chicken","pasta","rice","eggs","potatoes","beef","salmon","lentils","tofu","shrimp","lamb","mushrooms","chickpeas","pork","cod"];
+      const count = Math.floor(Math.random() * 3) + 2;
+      const shuffled = pantry.sort(() => Math.random() - 0.5).slice(0, count);
+      setIngredients(shuffled.join(", "));
+      setCuisine(randCuisine);
+      setMaxTime(randTime);
+      setBaseServings(randServings);
+      setGenError(""); setGenRecipe(null); setGenLoading(true);
+      try {
+        const res = await axios.post(`${API_URL}/generate`, { ingredients: shuffled, cuisine: randCuisine, max_time: randTime, servings: randServings });
+        setGenRecipe(res.data);
+        setGenServings(randServings);
+      } catch (e) {
+        setGenError((e.response && e.response.data && e.response.data.detail) || e.message || "Something went wrong.");
+      } finally { setGenLoading(false); }
+    }
+  };
+
   const isGenSaved = genRecipe && favourites.some(f => f.title === genRecipe.title);
   const isFindSaved = findRecipe && favourites.some(f => f.title === findRecipe.title);
 
@@ -705,6 +744,10 @@ export default function App() {
         .pricing-row.highlight { background: #1e1c18; }
         .pricing-row.highlight span:first-child { color: #f5f0e8; }
         .pricing-val { font-size: 1rem; font-weight: 700; color: #c8a96e; font-family: monospace; }
+        @keyframes wobble { 0%,100%{transform:rotate(-3deg) scale(1.02)} 50%{transform:rotate(3deg) scale(1.02)} }
+        .btn-surprise { position: fixed; bottom: 2rem; right: 2rem; z-index: 999; background: #c8a96e; color: #0f0e0c; border: none; border-radius: 50px; padding: 0.85rem 1.4rem; font-size: 1rem; font-family: Georgia, serif; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.5); transition: transform 0.15s, background 0.15s; }
+        .btn-surprise:hover:not(:disabled) { background: #daba80; animation: wobble 0.4s ease-in-out; }
+        .btn-surprise:disabled { background: #3a3530; color: #9a9080; cursor: not-allowed; box-shadow: none; }
       `}</style>
       <div className="card">
         <div style={{display:"flex", alignItems:"center", gap:"1rem"}}>
@@ -835,7 +878,18 @@ export default function App() {
         {view === "costing" && (
           <CostingTab favourites={favourites} genRecipe={genRecipe} findRecipe={findRecipe} myRecipes={myRecipes} />
         )}
-      </div>
+
+      {/* SURPRISE ME floating button */}
+      {(view === "generate" || view === "find") && (
+        <button
+          className="btn-surprise"
+          onClick={handleSurprise}
+          disabled={genLoading || findLoading}
+        >
+          🎲 Surprise Me!
+        </button>
+      )}
+</div>
     </div>
   );
 }
