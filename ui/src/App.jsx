@@ -767,21 +767,11 @@ export default function App() {
       {!appVisible && (
         <div className="hero">
           <img src="/logo-alt.png" alt="The Chaotic Culinary Club" className="hero-badge" />
-          <h1 className="hero-title">The Chaotic Culinary Club</h1>
-          <p className="hero-tagline">Let's get Culinating!!</p>
-          <div className="hero-features">
-            <div className="hero-feature"><span>🎲</span> Surprise Me</div>
-            <div className="hero-feature"><span>🔍</span> Find Recipes</div>
-            <div className="hero-feature"><span>⭐</span> Save Favourites</div>
-            <div className="hero-feature"><span>💰</span> Cost &amp; Price</div>
-            <div className="hero-feature"><span>📋</span> My Recipes</div>
-          </div>
           <button className="btn-enter" onClick={() => setAppVisible(true)}>
             Enter the Club
           </button>
         </div>
       )}
-      {!appVisible && <hr className="hero-divider" />}
 
       {/* APP */}
       {appVisible && (
@@ -917,7 +907,7 @@ export default function App() {
       </div>
       )}
       {/* SURPRISE ME floating button */}
-      {(view === "generate" || view === "find") && (
+      {appVisible && (view === "generate" || view === "find") && (
         <button
           className="btn-surprise"
           onClick={handleSurprise}
